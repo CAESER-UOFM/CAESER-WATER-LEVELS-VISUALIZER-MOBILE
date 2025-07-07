@@ -10,6 +10,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@libsql/client": "^0.15.9",
     "@types/sql.js": "^1.4.9",
     "chart.js": "^4.5.0",
     "chartjs-adapter-date-fns": "^3.0.0",
