@@ -1,14 +1,5 @@
 import { Handler } from '@netlify/functions';
-import { TursoService } from '../../src/lib/api/services/turso';
-
-let tursoService: TursoService;
-
-try {
-  tursoService = new TursoService();
-} catch (initError) {
-  console.error('Failed to initialize TursoService:', initError);
-  tursoService = null as any;
-}
+import { multiTursoService } from '../../src/lib/api/services/multiTurso';
 
 interface WellStatistics {
   wellNumber: string;
@@ -66,19 +57,8 @@ export const handler: Handler = async (event, context) => {
     };
   }
 
-  if (!tursoService) {
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({
-        success: false,
-        error: 'Database service not available'
-      })
-    };
-  }
-
   try {
-    const { wellNumber } = event.queryStringParameters || {};
+    const { wellNumber, databaseId = 'megasite' } = event.queryStringParameters || {};
     
     if (!wellNumber) {
       return {
@@ -91,55 +71,98 @@ export const handler: Handler = async (event, context) => {
       };
     }
 
-    console.log('Getting well statistics for:', wellNumber);
-    const statsData = await tursoService.getWellStatistics(wellNumber);
+    console.log('Getting well statistics for:', wellNumber, 'from database:', databaseId);
     
-    if (!statsData) {
-      return {
-        statusCode: 404,
-        headers,
-        body: JSON.stringify({
-          success: false,
-          error: 'No statistics found for this well'
-        })
-      };
+    // Query the well_statistics table directly
+    const query = `
+      SELECT 
+        well_number, num_points as total_readings, 
+        min_timestamp as data_start_date, max_timestamp as data_end_date,
+        last_update as last_reading_date
+      FROM well_statistics 
+      WHERE well_number = ?
+    `;
+    
+    const result = await multiTursoService.execute(databaseId, query, [wellNumber]);
+    
+    let statsData: any = {};
+    
+    if (result.rows.length === 0) {
+      // If no entry in well_statistics table, try to calculate basic stats from water_level_readings
+      console.log(`No well_statistics entry for ${wellNumber}, calculating basic stats...`);
+      
+      const basicStatsQuery = `
+        SELECT 
+          COUNT(*) as total_readings,
+          MIN(timestamp_utc) as data_start_date,
+          MAX(timestamp_utc) as data_end_date,
+          MAX(timestamp_utc) as last_reading_date
+        FROM water_level_readings 
+        WHERE well_number = ?
+      `;
+      
+      const basicResult = await multiTursoService.execute(databaseId, basicStatsQuery, [wellNumber]);
+      
+      if (basicResult.rows.length === 0 || parseInt(basicResult.rows[0][0]) === 0) {
+        // Still no data found - well might not exist
+        return {
+          statusCode: 404,
+          headers,
+          body: JSON.stringify({
+            success: false,
+            error: 'No data found for this well'
+          })
+        };
+      }
+      
+      // Build stats data from basic query
+      basicResult.columns.forEach((col, index) => {
+        statsData[col] = basicResult.rows[0][index];
+      });
+      statsData.well_number = wellNumber;
+    } else {
+      // Use data from well_statistics table
+      const row = result.rows[0];
+      result.columns.forEach((col, index) => {
+        statsData[col] = row[index];
+      });
     }
 
     console.log('Statistics data retrieved:', statsData);
 
     const statistics: WellStatistics = {
       wellNumber: statsData.well_number,
-      totalReadings: statsData.total_readings,
+      totalReadings: parseInt(statsData.total_readings) || 0,
       dataRange: {
-        startDate: statsData.data_start_date,
-        endDate: statsData.data_end_date,
-        totalDays: statsData.total_days
+        startDate: statsData.data_start_date || '',
+        endDate: statsData.data_end_date || '',
+        totalDays: 0 // Calculate if needed
       },
       levels: {
-        min: statsData.min_water_level,
-        max: statsData.max_water_level,
-        average: statsData.avg_water_level,
-        range: statsData.max_water_level - statsData.min_water_level,
-        minDate: statsData.min_level_date,
-        maxDate: statsData.max_level_date
+        min: 0, // Not available in simple schema
+        max: 0, // Not available in simple schema
+        average: 0, // Not available in simple schema
+        range: 0,
+        minDate: '',
+        maxDate: ''
       },
       trend: {
-        direction: statsData.trend_direction as 'rising' | 'falling' | 'stable',
-        slope: 0, // Not stored in current schema
-        changePerYear: statsData.trend_change_per_year,
-        confidence: 0 // Not stored in current schema
+        direction: 'stable' as const,
+        slope: 0,
+        changePerYear: 0,
+        confidence: 0
       },
       seasonal: {
-        highestMonth: statsData.highest_month,
-        lowestMonth: statsData.lowest_month,
-        seasonalVariation: 0, // Not stored in current schema
-        monthlyAverages: [] // Not stored in current schema
+        highestMonth: '',
+        lowestMonth: '',
+        seasonalVariation: 0,
+        monthlyAverages: []
       },
       recent: {
-        last30Days: statsData.readings_last_30_days,
-        last90Days: 0, // Not stored in current schema
-        lastReading: statsData.last_reading_date,
-        recentTrend: 'stable' as const // Not stored in current schema
+        last30Days: 0,
+        last90Days: 0,
+        lastReading: statsData.last_reading_date || '',
+        recentTrend: 'stable' as const
       }
     };
 

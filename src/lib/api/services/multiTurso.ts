@@ -81,7 +81,7 @@ export class MultiTursoService {
     }
   }
 
-  private async execute(databaseId: string, sql: string, args: any[] = [], timeout: number = 5000): Promise<{ columns: string[]; rows: any[] }> {
+  async execute(databaseId: string, sql: string, args: any[] = [], timeout: number = 5000): Promise<{ columns: string[]; rows: any[] }> {
     const dbConfig = this.databases.get(databaseId);
     if (!dbConfig) {
       throw new Error(`Database '${databaseId}' not found`);
@@ -306,7 +306,7 @@ export class MultiTursoService {
         firstRow: result.rows[0]
       });
       
-      const wells: Well[] = result.rows.map(row => {
+      const wells: Well[] = await Promise.all(result.rows.map(async row => {
         const well: any = {};
         result.columns.forEach((col, index) => {
           well[col] = row[index];
@@ -315,14 +315,34 @@ export class MultiTursoService {
         // Convert string values to appropriate types
         well.latitude = parseFloat(well.latitude) || 0;
         well.longitude = parseFloat(well.longitude) || 0;
-        well.total_readings = 0;
-        well.has_manual_readings = false;
-        well.has_transducer_data = false;
-        well.has_telemetry_data = false;
-        well.manual_readings_count = 0;
+        
+        // Get actual reading counts for each well
+        try {
+          const [transducerResult, manualResult] = await Promise.all([
+            this.execute(databaseId, 'SELECT COUNT(*) FROM water_level_readings WHERE well_number = ?', [well.well_number]),
+            this.execute(databaseId, 'SELECT COUNT(*) FROM manual_level_readings WHERE well_number = ?', [well.well_number])
+          ]);
+          
+          const transducerCount = parseInt(transducerResult.rows[0][0]) || 0;
+          const manualCount = parseInt(manualResult.rows[0][0]) || 0;
+          
+          well.total_readings = transducerCount + manualCount;
+          well.has_manual_readings = manualCount > 0;
+          well.has_transducer_data = transducerCount > 0;
+          well.has_telemetry_data = false; // No telemetry data in current schema
+          well.manual_readings_count = manualCount;
+        } catch (error) {
+          console.error(`Error getting counts for well ${well.well_number}:`, error);
+          // Fallback to 0 if count queries fail
+          well.total_readings = 0;
+          well.has_manual_readings = false;
+          well.has_transducer_data = false;
+          well.has_telemetry_data = false;
+          well.manual_readings_count = 0;
+        }
         
         return well as Well;
-      });
+      }));
 
       return {
         success: true,
@@ -419,8 +439,8 @@ export class MultiTursoService {
       let query = `
         SELECT 
           id, well_number, timestamp_utc, julian_timestamp,
-          water_level, temperature, dtw, data_source,
-          baro_flag, level_flag, notes
+          water_level, temperature, baro_flag,
+          'transducer' as data_source
         FROM water_level_readings 
         WHERE ${whereClause}
         ORDER BY timestamp_utc ASC
@@ -438,8 +458,8 @@ export class MultiTursoService {
             SELECT * FROM (
               SELECT 
                 id, well_number, timestamp_utc, julian_timestamp,
-                water_level, temperature, dtw, data_source,
-                baro_flag, level_flag, notes,
+                water_level, temperature, baro_flag,
+                'transducer' as data_source,
                 ROW_NUMBER() OVER (ORDER BY timestamp_utc) as row_num
               FROM water_level_readings 
               WHERE ${whereClause}
@@ -462,7 +482,9 @@ export class MultiTursoService {
         reading.julian_timestamp = parseFloat(reading.julian_timestamp) || null;
         reading.water_level = parseFloat(reading.water_level) || null;
         reading.temperature = parseFloat(reading.temperature) || null;
-        reading.dtw = parseFloat(reading.dtw) || null;
+        reading.dtw = null; // Not available in this schema
+        reading.level_flag = null;
+        reading.notes = null;
         
         return reading as WaterLevelReading;
       });

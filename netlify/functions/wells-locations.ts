@@ -1,5 +1,5 @@
 import { Handler } from '@netlify/functions';
-import { TursoService } from '../../src/lib/api/services/turso';
+import { multiTursoService } from '../../src/lib/api/services/multiTurso';
 
 interface WellLocation {
   well_number: string;
@@ -40,8 +40,6 @@ export const handler: Handler = async (event, context) => {
       };
     }
 
-    const tursoService = new TursoService();
-    
     // Query wells with location data (filter out wells without coordinates)
     const wellsQuery = `
       SELECT 
@@ -50,8 +48,7 @@ export const handler: Handler = async (event, context) => {
         latitude,
         longitude,
         aquifer,
-        well_field,
-        cluster
+        well_field
       FROM wells
       WHERE latitude IS NOT NULL 
         AND longitude IS NOT NULL
@@ -60,7 +57,7 @@ export const handler: Handler = async (event, context) => {
       ORDER BY well_number
     `;
 
-    const result = await tursoService.executeQuery(wellsQuery);
+    const result = await multiTursoService.execute(databaseId, wellsQuery);
     
     // Process results with basic reading counts
     const wellsWithStatus = await Promise.all(result.rows.map(async row => {
@@ -84,16 +81,15 @@ export const handler: Handler = async (event, context) => {
       let hasTelemetry = false;
 
       try {
-        // Quick count queries
-        const [transducerResult, manualResult, telemetryResult] = await Promise.all([
-          tursoService.executeQuery(`SELECT COUNT(*) FROM water_level_readings WHERE well_number = ?`, [well.well_number]),
-          tursoService.executeQuery(`SELECT COUNT(*) FROM manual_level_readings WHERE well_number = ?`, [well.well_number]),
-          tursoService.executeQuery(`SELECT COUNT(*) FROM telemetry_level_readings WHERE well_number = ?`, [well.well_number])
+        // Quick count queries - only query existing tables
+        const [transducerResult, manualResult] = await Promise.all([
+          multiTursoService.execute(databaseId, `SELECT COUNT(*) FROM water_level_readings WHERE well_number = ?`, [well.well_number]),
+          multiTursoService.execute(databaseId, `SELECT COUNT(*) FROM manual_level_readings WHERE well_number = ?`, [well.well_number])
         ]);
 
         const transducerCount = Number(transducerResult.rows[0][0]);
         const manualCount = Number(manualResult.rows[0][0]);
-        const telemetryCount = Number(telemetryResult.rows[0][0]);
+        const telemetryCount = 0; // No telemetry table in current schema
         
         totalReadings = transducerCount + manualCount + telemetryCount;
         hasTransducer = transducerCount > 0;
@@ -125,7 +121,7 @@ export const handler: Handler = async (event, context) => {
         longitude: lng,
         aquifer: well.aquifer || 'unknown',
         well_field: well.well_field || '',
-        cluster: well.cluster || '',
+        cluster: '',
         ground_elevation: undefined,
         well_depth: undefined,
         static_water_level: undefined,

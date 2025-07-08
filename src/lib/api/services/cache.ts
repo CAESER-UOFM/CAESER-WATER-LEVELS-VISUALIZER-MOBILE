@@ -87,6 +87,39 @@ export class CacheService {
     return this.get(key);
   }
 
+  // Daily overview cache methods
+  storeDailyOverview(databaseId: string, wellNumber: string, data: any): boolean {
+    const key = `daily_overview:${databaseId}:${wellNumber}`;
+    return this.set(key, data, 15 * 60); // 15 minutes TTL
+  }
+
+  getDailyOverview(databaseId: string, wellNumber: string): any {
+    const key = `daily_overview:${databaseId}:${wellNumber}`;
+    return this.get(key);
+  }
+
+  // Well statistics cache methods
+  setWellStatistics(databaseId: string, wellNumber: string, data: any): boolean {
+    const key = `well_stats:${databaseId}:${wellNumber}`;
+    return this.set(key, data, 30 * 60); // 30 minutes TTL
+  }
+
+  getWellStatistics(databaseId: string, wellNumber: string): any {
+    const key = `well_stats:${databaseId}:${wellNumber}`;
+    return this.get(key);
+  }
+
+  // Wells location cache methods
+  setWellsLocations(databaseId: string, data: any): boolean {
+    const key = `wells_locations:${databaseId}`;
+    return this.set(key, data, 20 * 60); // 20 minutes TTL
+  }
+
+  getWellsLocations(databaseId: string): any {
+    const key = `wells_locations:${databaseId}`;
+    return this.get(key);
+  }
+
   // Clear cache for a specific database
   clearDatabaseCache(databaseId: string): void {
     const keys = this.cache.keys();
