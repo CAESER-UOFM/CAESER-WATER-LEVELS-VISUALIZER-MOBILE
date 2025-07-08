@@ -138,6 +138,21 @@ export const handler: Handler = async (event, context) => {
     
     if (parseInt(statsData.total_readings) > 0) {
       try {
+        // First, let's check what water level data we have
+        const sampleQuery = `
+          SELECT water_level, timestamp_utc 
+          FROM water_level_readings 
+          WHERE well_number = ? AND water_level IS NOT NULL
+          ORDER BY timestamp_utc DESC
+          LIMIT 5
+        `;
+        
+        const sampleResult = await multiTursoService.execute(databaseId, sampleQuery, [wellNumber]);
+        console.log('Sample water level data:', {
+          rows: sampleResult.rows,
+          columns: sampleResult.columns
+        });
+        
         // Get min, max, and average water levels
         const levelStatsQuery = `
           SELECT 
@@ -150,10 +165,17 @@ export const handler: Handler = async (event, context) => {
         
         const levelResult = await multiTursoService.execute(databaseId, levelStatsQuery, [wellNumber]);
         
+        console.log('Level stats query result:', {
+          rows: levelResult.rows,
+          columns: levelResult.columns
+        });
+        
         if (levelResult.rows.length > 0) {
           minLevel = parseFloat(levelResult.rows[0][0]) || 0;
           maxLevel = parseFloat(levelResult.rows[0][1]) || 0;
           avgLevel = parseFloat(levelResult.rows[0][2]) || 0;
+          
+          console.log('Parsed levels:', { minLevel, maxLevel, avgLevel });
         }
         
         // Get dates for min and max levels
