@@ -40,110 +40,45 @@ export const handler: Handler = async (event, context) => {
       };
     }
 
-    // Query wells with location data (filter out wells without coordinates)
-    const wellsQuery = `
-      SELECT 
-        well_number,
-        cae_number,
-        latitude,
-        longitude,
-        aquifer,
-        well_field
-      FROM wells
-      WHERE latitude IS NOT NULL 
-        AND longitude IS NOT NULL
-        AND latitude != 0 
-        AND longitude != 0
-      ORDER BY well_number
-    `;
+    console.log(`Getting well locations for database: ${databaseId}`);
 
-    const result = await multiTursoService.execute(databaseId, wellsQuery);
-    
-    // Process results with basic reading counts
-    const wellsWithStatus = await Promise.all(result.rows.map(async row => {
-      const well: any = {};
-      result.columns.forEach((col, index) => {
-        well[col] = row[index];
-      });
+    // Use the existing multiTursoService getWells method which is already working
+    const wellsResponse = await multiTursoService.getWells(databaseId, {
+      limit: 100 // Get all wells for location data
+    });
 
-      const lat = parseFloat(well.latitude || '0');
-      const lng = parseFloat(well.longitude || '0');
-      
-      // Skip wells with invalid coordinates
-      if (lat === 0 || lng === 0) {
-        return null;
-      }
+    if (!wellsResponse.success) {
+      throw new Error('Failed to get wells data');
+    }
 
-      // Get basic reading counts (simplified)
-      let totalReadings = 0;
-      let hasTransducer = false;
-      let hasManual = false;
-      let hasTelemetry = false;
+    console.log(`Got ${wellsResponse.data.length} wells from getWells`);
 
-      try {
-        // Quick count queries - only query existing tables
-        const transducerResult = await multiTursoService.execute(databaseId, `SELECT COUNT(*) FROM water_level_readings WHERE well_number = ?`, [well.well_number]);
-        
-        let manualCount = 0;
-        try {
-          // Try to get manual readings count - table might not exist in all databases
-          const manualResult = await multiTursoService.execute(databaseId, `SELECT COUNT(*) FROM manual_level_readings WHERE well_number = ?`, [well.well_number]);
-          manualCount = Number(manualResult.rows[0][0]);
-        } catch (manualError) {
-          // manual_level_readings table doesn't exist, that's okay
-          console.log(`Manual readings table doesn't exist for ${databaseId}`);
-        }
-
-        const transducerCount = Number(transducerResult.rows[0][0]);
-        const telemetryCount = 0; // No telemetry table in current schema
-        
-        totalReadings = transducerCount + manualCount + telemetryCount;
-        hasTransducer = transducerCount > 0;
-        hasManual = manualCount > 0;
-        hasTelemetry = telemetryCount > 0;
-      } catch (error) {
-        console.error(`Error getting counts for ${well.well_number}:`, error);
-      }
-
-      // Determine status
-      let dataStatus: 'transducer' | 'telemetry' | 'manual' | 'no_data' = 'no_data';
-      let status: 'has_data' | 'limited_data' | 'no_data' = 'no_data';
-
-      if (hasTransducer) {
-        dataStatus = 'transducer';
-        status = 'has_data';
-      } else if (hasTelemetry) {
-        dataStatus = 'telemetry';
-        status = 'has_data';
-      } else if (hasManual) {
-        dataStatus = 'manual';
-        status = totalReadings > 5 ? 'has_data' : 'limited_data';
-      }
-
-      return {
+    // Transform wells data to location format, filtering only wells with coordinates
+    const validWells = wellsResponse.data
+      .filter(well => well.latitude !== 0 && well.longitude !== 0)
+      .map(well => ({
         well_number: well.well_number,
         cae_number: well.cae_number || '',
-        latitude: lat,
-        longitude: lng,
-        aquifer: well.aquifer || 'unknown',
+        latitude: well.latitude,
+        longitude: well.longitude,
+        aquifer: well.aquifer_type || 'unknown',
         well_field: well.well_field || '',
         cluster: '',
         ground_elevation: undefined,
         well_depth: undefined,
         static_water_level: undefined,
         last_reading_date: undefined,
-        total_readings: totalReadings,
-        data_status: dataStatus,
-        status: status,
-        has_manual_readings: hasManual,
-        has_transducer_data: hasTransducer,
-        has_telemetry_data: hasTelemetry,
+        total_readings: well.total_readings,
+        data_status: well.has_transducer_data ? 'transducer' : 
+                    well.has_manual_readings ? 'manual' : 'no_data' as 'transducer' | 'telemetry' | 'manual' | 'no_data',
+        status: well.total_readings > 0 ? 'has_data' : 'no_data' as 'has_data' | 'limited_data' | 'no_data',
+        has_manual_readings: well.has_manual_readings,
+        has_transducer_data: well.has_transducer_data,
+        has_telemetry_data: well.has_telemetry_data,
         notes: ''
-      };
-    }));
+      })) as WellLocation[];
 
-    // Filter out null results
-    const validWells = wellsWithStatus.filter(w => w !== null) as WellLocation[];
+    console.log(`Filtered to ${validWells.length} wells with valid coordinates`);
 
     return {
       statusCode: 200,

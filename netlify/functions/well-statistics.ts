@@ -131,6 +131,65 @@ export const handler: Handler = async (event, context) => {
 
     console.log('Statistics data retrieved:', statsData);
 
+    // Calculate additional statistics from water level data if we have readings
+    let minLevel = 0, maxLevel = 0, avgLevel = 0;
+    let minDate = '', maxDate = '';
+    let recentReadings30 = 0, recentReadings90 = 0;
+    
+    if (parseInt(statsData.total_readings) > 0) {
+      try {
+        // Get min, max, and average water levels
+        const levelStatsQuery = `
+          SELECT 
+            MIN(water_level) as min_level,
+            MAX(water_level) as max_level,
+            AVG(water_level) as avg_level
+          FROM water_level_readings 
+          WHERE well_number = ? AND water_level IS NOT NULL
+        `;
+        
+        const levelResult = await multiTursoService.execute(databaseId, levelStatsQuery, [wellNumber]);
+        
+        if (levelResult.rows.length > 0) {
+          minLevel = parseFloat(levelResult.rows[0][0]) || 0;
+          maxLevel = parseFloat(levelResult.rows[0][1]) || 0;
+          avgLevel = parseFloat(levelResult.rows[0][2]) || 0;
+        }
+        
+        // Get dates for min and max levels
+        const minMaxDatesQuery = `
+          SELECT 
+            (SELECT timestamp_utc FROM water_level_readings WHERE well_number = ? AND water_level = ? LIMIT 1) as min_date,
+            (SELECT timestamp_utc FROM water_level_readings WHERE well_number = ? AND water_level = ? LIMIT 1) as max_date
+        `;
+        
+        const datesResult = await multiTursoService.execute(databaseId, minMaxDatesQuery, [wellNumber, minLevel, wellNumber, maxLevel]);
+        
+        if (datesResult.rows.length > 0) {
+          minDate = datesResult.rows[0][0] || '';
+          maxDate = datesResult.rows[0][1] || '';
+        }
+        
+        // Get recent reading counts
+        const recentCountsQuery = `
+          SELECT 
+            COUNT(CASE WHEN timestamp_utc >= date('now', '-30 days') THEN 1 END) as last_30_days,
+            COUNT(CASE WHEN timestamp_utc >= date('now', '-90 days') THEN 1 END) as last_90_days
+          FROM water_level_readings 
+          WHERE well_number = ?
+        `;
+        
+        const recentResult = await multiTursoService.execute(databaseId, recentCountsQuery, [wellNumber]);
+        
+        if (recentResult.rows.length > 0) {
+          recentReadings30 = parseInt(recentResult.rows[0][0]) || 0;
+          recentReadings90 = parseInt(recentResult.rows[0][1]) || 0;
+        }
+      } catch (error) {
+        console.error('Error calculating detailed statistics:', error);
+      }
+    }
+
     const statistics: WellStatistics = {
       wellNumber: statsData.well_number,
       totalReadings: parseInt(statsData.total_readings) || 0,
@@ -140,12 +199,12 @@ export const handler: Handler = async (event, context) => {
         totalDays: 0 // Calculate if needed
       },
       levels: {
-        min: 0, // Not available in simple schema
-        max: 0, // Not available in simple schema
-        average: 0, // Not available in simple schema
-        range: 0,
-        minDate: '',
-        maxDate: ''
+        min: minLevel,
+        max: maxLevel,
+        average: avgLevel,
+        range: maxLevel - minLevel,
+        minDate: minDate,
+        maxDate: maxDate
       },
       trend: {
         direction: 'stable' as const,
@@ -160,8 +219,8 @@ export const handler: Handler = async (event, context) => {
         monthlyAverages: []
       },
       recent: {
-        last30Days: 0,
-        last90Days: 0,
+        last30Days: recentReadings30,
+        last90Days: recentReadings90,
         lastReading: statsData.last_reading_date || '',
         recentTrend: 'stable' as const
       }

@@ -160,6 +160,39 @@ export class IndexedDBCache {
     
     return results;
   }
+
+  // Methods needed for daily overview caching
+  async storeDailyOverview(databaseId: string, wellNumber: string, data: any): Promise<void> {
+    const key = `daily_overview:${databaseId}:${wellNumber}`;
+    return this.set(key, data, 15 * 60 * 1000); // 15 minutes TTL
+  }
+
+  async getDailyOverview(databaseId: string, wellNumber: string): Promise<any> {
+    const key = `daily_overview:${databaseId}:${wellNumber}`;
+    return this.get(key);
+  }
+
+  // Methods for well statistics caching  
+  async storeWellStatistics(databaseId: string, wellNumber: string, data: any): Promise<void> {
+    const key = `well_stats:${databaseId}:${wellNumber}`;
+    return this.set(key, data, 30 * 60 * 1000); // 30 minutes TTL
+  }
+
+  async getWellStatistics(databaseId: string, wellNumber: string): Promise<any> {
+    const key = `well_stats:${databaseId}:${wellNumber}`;
+    return this.get(key);
+  }
+
+  // Methods for wells locations caching
+  async storeWellsLocations(databaseId: string, data: any): Promise<void> {
+    const key = `wells_locations:${databaseId}`;
+    return this.set(key, data, 20 * 60 * 1000); // 20 minutes TTL
+  }
+
+  async getWellsLocations(databaseId: string): Promise<any> {
+    const key = `wells_locations:${databaseId}`;
+    return this.get(key);
+  }
 }
 
 export default IndexedDBCache;
