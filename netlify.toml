@@ -6,6 +6,7 @@
 [build.environment]
   NODE_VERSION = "18"
   NPM_FLAGS = "--production=false"
+  AWS_LAMBDA_JS_RUNTIME = "nodejs18.x"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"

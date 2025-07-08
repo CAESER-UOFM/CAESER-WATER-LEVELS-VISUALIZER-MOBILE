@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { AuthProvider } from '@/contexts/AuthContext'
+import AuthWrapper from '@/components/AuthWrapper'
 
 export const metadata: Metadata = {
   title: 'Water Level Visualizer',
@@ -40,15 +42,19 @@ export default function RootLayout({
         <link rel="preconnect" href="https://sql.js.org" />
       </head>
       <body className="min-h-screen bg-gray-50">
-        <div className="flex flex-col min-h-screen">
-          <main className="flex-1">
-            {children}
-          </main>
-          <footer className="bg-white border-t border-gray-200 py-4 px-4 text-center text-sm text-gray-500">
-            <p>Water Level Monitoring System</p>
-            <p className="text-xs mt-1">Mobile Visualizer v1.0</p>
-          </footer>
-        </div>
+        <AuthProvider>
+          <AuthWrapper>
+            <div className="flex flex-col min-h-screen">
+              <main className="flex-1">
+                {children}
+              </main>
+              <footer className="bg-white border-t border-gray-200 py-4 px-4 text-center text-sm text-gray-500">
+                <p>Water Level Monitoring System</p>
+                <p className="text-xs mt-1">Mobile Visualizer v1.0</p>
+              </footer>
+            </div>
+          </AuthWrapper>
+        </AuthProvider>
       </body>
     </html>
   )

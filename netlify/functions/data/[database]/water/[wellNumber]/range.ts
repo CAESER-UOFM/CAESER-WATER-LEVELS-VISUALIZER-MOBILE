@@ -12,19 +12,25 @@ export const handler: Handler = async (event, context) => {
   }
 
   try {
-    const db = getDatabase(database);
+    const dbConnection = await getDatabase(database);
+    if (!dbConnection) {
+      return {
+        statusCode: 404,
+        body: JSON.stringify({ success: false, error: 'Database not found' })
+      };
+    }
     
     // Get the date range for this well
-    const result = await db.query(`
+    const result = dbConnection.database.exec(`
       SELECT 
         MIN(timestamp_utc) as start_date,
         MAX(timestamp_utc) as end_date,
         COUNT(*) as total_readings
       FROM water_level_readings
-      WHERE well_number = $1
-    `, [wellNumber]);
+      WHERE well_number = '${wellNumber}'
+    `);
 
-    if (result.rows.length === 0 || !result.rows[0].start_date) {
+    if (result.length === 0 || !result[0].values.length || !result[0].values[0][0]) {
       return {
         statusCode: 404,
         body: JSON.stringify({ 
@@ -34,7 +40,7 @@ export const handler: Handler = async (event, context) => {
       };
     }
 
-    const { start_date, end_date, total_readings } = result.rows[0];
+    const [start_date, end_date, total_readings] = result[0].values[0];
 
     return {
       statusCode: 200,
@@ -48,8 +54,8 @@ export const handler: Handler = async (event, context) => {
           wellNumber,
           startDate: start_date,
           endDate: end_date,
-          totalReadings: parseInt(total_readings),
-          spanDays: Math.ceil((new Date(end_date).getTime() - new Date(start_date).getTime()) / (1000 * 60 * 60 * 24))
+          totalReadings: parseInt(String(total_readings)),
+          spanDays: Math.ceil((new Date(String(end_date)).getTime() - new Date(String(start_date)).getTime()) / (1000 * 60 * 60 * 24))
         }
       })
     };

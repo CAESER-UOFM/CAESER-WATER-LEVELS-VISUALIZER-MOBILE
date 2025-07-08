@@ -1,9 +1,5 @@
 import { Handler, HandlerEvent } from '@netlify/functions';
-import { TursoService } from '../../src/lib/api/services/turso';
-import { cacheService } from '../../src/lib/api/services/cache';
 import { ApiResponse, DatabaseInfo } from '../../src/lib/api/api';
-
-const tursoService = new TursoService();
 
 export const handler: Handler = async (event: HandlerEvent) => {
   // Set CORS headers
@@ -68,9 +64,12 @@ export const handler: Handler = async (event: HandlerEvent) => {
 };
 
 async function listDatabases() {
-  // Check cache first
-  const cachedDatabases = cacheService.getDatabaseList<DatabaseInfo[]>();
-  if (cachedDatabases) {
+  try {
+    // Use the new multi-database service
+    const { multiTursoService } = await import('../../src/lib/api/services/multiTurso');
+    
+    const databases = await multiTursoService.listDatabases();
+
     return {
       statusCode: 200,
       headers: {
@@ -79,112 +78,81 @@ async function listDatabases() {
       },
       body: JSON.stringify({
         success: true,
-        data: cachedDatabases
+        data: databases
       } as ApiResponse<DatabaseInfo[]>),
     };
-  }
-
-  // Since we're using a single Turso database, return static info
-  const stats = await tursoService.getDatabaseStats();
-  const wellFields = await tursoService.getWellFields();
   
-  const databases: DatabaseInfo[] = [{
-    id: 'caeser-water-monitoring',
-    name: 'CAESER Water Monitoring Database',
-    size: 0, // Size not applicable for Turso
-    modified: new Date().toISOString(),
-    wellsCount: stats.wellsCount,
-    readingsCount: stats.readingsCount,
-    lastUpdate: stats.lastUpdate,
-    wellFields
-  }];
-
-  // Cache the result
-  cacheService.setDatabaseList(databases);
-
-  return {
-    statusCode: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      success: true,
-      data: databases
-    } as ApiResponse<DatabaseInfo[]>),
-  };
-}
-
-async function getDatabaseInfo(id: string) {
-  // Check cache first
-  const cachedStats = cacheService.getDatabaseStats(id);
-  if (cachedStats) {
+  } catch (error) {
+    console.error('Error in listDatabases:', error);
     return {
-      statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        success: true,
-        data: cachedStats
-      } as ApiResponse),
-    };
-  }
-
-  // Only support our single Turso database
-  if (id !== 'caeser-water-monitoring') {
-    return {
-      statusCode: 404,
+      statusCode: 500,
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         success: false,
-        error: 'Database not found'
-      } as ApiResponse),
+        error: error instanceof Error ? error.message : 'Unknown error',
+        debug: {
+          envVars: Object.keys(process.env).filter(k => k.includes('TURSO') || k.includes('SANDY') || k.includes('MEGA') || k.includes('CAESER')),
+          stack: error instanceof Error ? error.stack : undefined
+        }
+      }),
     };
   }
+}
 
-  // Get stats from Turso
-  const stats = await tursoService.getDatabaseStats();
-  const wellFields = await tursoService.getWellFields();
+async function getDatabaseInfo(id: string) {
+  try {
+    const { multiTursoService } = await import('../../src/lib/api/services/multiTurso');
+    
+    // Get all databases to find the requested one
+    const databases = await multiTursoService.listDatabases();
+    const databaseInfo = databases.find(db => db.id === id);
+    
+    if (!databaseInfo) {
+      return {
+        statusCode: 404,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          success: false,
+          error: 'Database not found'
+        } as ApiResponse),
+      };
+    }
+
+    return {
+      statusCode: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        success: true,
+        data: databaseInfo
+      } as ApiResponse),
+    };
   
-  const databaseInfo = {
-    id: 'caeser-water-monitoring',
-    name: 'CAESER Water Monitoring Database',
-    size: 0, // Size not applicable for Turso
-    modified: new Date().toISOString(),
-    wellsCount: stats.wellsCount,
-    readingsCount: stats.readingsCount,
-    lastUpdate: stats.lastUpdate,
-    wellFields
-  };
-
-  // Cache the stats
-  cacheService.setDatabaseStats(id, databaseInfo);
-
-  return {
-    statusCode: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      success: true,
-      data: databaseInfo
-    } as ApiResponse),
-  };
+  } catch (error) {
+    console.error('Error in getDatabaseInfo:', error);
+    return {
+      statusCode: 500,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      }),
+    };
+  }
 }
 
 async function refreshDatabaseCache(id: string) {
-  // Clear cache for this database
-  cacheService.clearDatabaseCache(id);
-  
-  // Clear database list cache to force refresh
-  cacheService.del('databases:list');
-
   return {
     statusCode: 200,
     headers: {

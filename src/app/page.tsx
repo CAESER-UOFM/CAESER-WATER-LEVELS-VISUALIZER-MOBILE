@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { DatabaseSelector } from '@/components/DatabaseSelector';
+import LogoutButton from '@/components/LogoutButton';
 import type { DatabaseInfo } from '@/types/database';
 
 export default function HomePage() {
@@ -43,6 +44,12 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-slate-900 to-blue-900">
       <div className="container mx-auto px-4 py-8 max-w-6xl">
+        {/* Header with Logout */}
+        <div className="flex justify-between items-center mb-6">
+          <div></div>
+          <LogoutButton />
+        </div>
+        
         {/* Hero Section */}
         <div className="text-center mb-8 md:mb-12">
           {/* Mobile: Stacked layout, Desktop: Side by side */}

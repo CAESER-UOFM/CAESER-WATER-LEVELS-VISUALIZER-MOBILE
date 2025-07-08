@@ -261,19 +261,20 @@ export class MultiTursoService {
       }
 
       if (aquifer) {
-        whereConditions.push(`aquifer_type = ?`);
+        whereConditions.push(`aquifer = ?`);
         queryParams.push(aquifer);
       }
 
-      if (dataType) {
-        if (dataType === 'transducer') {
-          whereConditions.push(`has_transducer_data = 1`);
-        } else if (dataType === 'telemetry') {
-          whereConditions.push(`has_telemetry_data = 1`);
-        } else if (dataType === 'manual') {
-          whereConditions.push(`has_manual_readings = 1`);
-        }
-      }
+      // Skip dataType filtering for now since megasite doesn't have these columns
+      // if (dataType) {
+      //   if (dataType === 'transducer') {
+      //     whereConditions.push(`has_transducer_data = 1`);
+      //   } else if (dataType === 'telemetry') {
+      //     whereConditions.push(`has_telemetry_data = 1`);
+      //   } else if (dataType === 'manual') {
+      //     whereConditions.push(`has_manual_readings = 1`);
+      //   }
+      // }
 
       const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
       const orderClause = `ORDER BY ${sortBy} ${sortOrder.toUpperCase()}`;
@@ -287,19 +288,23 @@ export class MultiTursoService {
       const offset = (page - 1) * limit;
       const dataQuery = `
         SELECT 
-          well_number, cae_number, well_field, cluster,
-          latitude, longitude, top_of_casing, ground_elevation,
-          well_depth, screen_top, screen_bottom, aquifer_type,
-          static_water_level, notes, last_reading_date, total_readings,
-          has_manual_readings, has_transducer_data, has_telemetry_data,
-          manual_readings_count
+          well_number, cae_number, well_field, 
+          latitude, longitude, aquifer as aquifer_type
         FROM wells 
         ${whereClause} 
         ${orderClause} 
         LIMIT ? OFFSET ?
       `;
 
+      console.log(`Executing wells query for ${databaseId}:`, dataQuery, [...queryParams, limit, offset]);
+      
       const result = await this.execute(databaseId, dataQuery, [...queryParams, limit, offset]);
+      
+      console.log(`Wells query result for ${databaseId}:`, {
+        columns: result.columns,
+        rowCount: result.rows.length,
+        firstRow: result.rows[0]
+      });
       
       const wells: Well[] = result.rows.map(row => {
         const well: any = {};
@@ -310,12 +315,11 @@ export class MultiTursoService {
         // Convert string values to appropriate types
         well.latitude = parseFloat(well.latitude) || 0;
         well.longitude = parseFloat(well.longitude) || 0;
-        well.top_of_casing = parseFloat(well.top_of_casing) || null;
-        well.total_readings = parseInt(well.total_readings) || 0;
-        well.has_manual_readings = Boolean(well.has_manual_readings);
-        well.has_transducer_data = Boolean(well.has_transducer_data);
-        well.has_telemetry_data = Boolean(well.has_telemetry_data);
-        well.manual_readings_count = parseInt(well.manual_readings_count) || 0;
+        well.total_readings = 0;
+        well.has_manual_readings = false;
+        well.has_transducer_data = false;
+        well.has_telemetry_data = false;
+        well.manual_readings_count = 0;
         
         return well as Well;
       });
@@ -331,8 +335,13 @@ export class MultiTursoService {
         }
       };
     } catch (error) {
-      console.error(`Failed to get wells for database ${databaseId}:`, error);
-      throw new Error(`Failed to retrieve wells data from ${databaseId}`);
+      console.error(`Failed to get wells for database ${databaseId}:`, {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+        databaseId,
+        params
+      });
+      throw new Error(`Failed to retrieve wells data from ${databaseId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -341,12 +350,8 @@ export class MultiTursoService {
     try {
       const query = `
         SELECT 
-          well_number, cae_number, well_field, cluster,
-          latitude, longitude, top_of_casing, ground_elevation,
-          well_depth, screen_top, screen_bottom, aquifer_type,
-          static_water_level, notes, last_reading_date, total_readings,
-          has_manual_readings, has_transducer_data, has_telemetry_data,
-          manual_readings_count
+          well_number, cae_number, well_field,
+          latitude, longitude, aquifer as aquifer_type
         FROM wells 
         WHERE well_number = ?
       `;
@@ -366,12 +371,11 @@ export class MultiTursoService {
       // Convert string values to appropriate types
       well.latitude = parseFloat(well.latitude) || 0;
       well.longitude = parseFloat(well.longitude) || 0;
-      well.top_of_casing = parseFloat(well.top_of_casing) || null;
-      well.total_readings = parseInt(well.total_readings) || 0;
-      well.has_manual_readings = Boolean(well.has_manual_readings);
-      well.has_transducer_data = Boolean(well.has_transducer_data);
-      well.has_telemetry_data = Boolean(well.has_telemetry_data);
-      well.manual_readings_count = parseInt(well.manual_readings_count) || 0;
+      well.total_readings = 0;
+      well.has_manual_readings = false;
+      well.has_transducer_data = false;
+      well.has_telemetry_data = false;
+      well.manual_readings_count = 0;
       
       return well as Well;
     } catch (error) {
@@ -560,10 +564,10 @@ export class MultiTursoService {
   async getAquiferTypes(databaseId: string): Promise<string[]> {
     try {
       const query = `
-        SELECT DISTINCT aquifer_type 
+        SELECT DISTINCT aquifer 
         FROM wells 
-        WHERE aquifer_type IS NOT NULL AND aquifer_type != ''
-        ORDER BY aquifer_type
+        WHERE aquifer IS NOT NULL AND aquifer != ''
+        ORDER BY aquifer
       `;
 
       const result = await this.execute(databaseId, query);

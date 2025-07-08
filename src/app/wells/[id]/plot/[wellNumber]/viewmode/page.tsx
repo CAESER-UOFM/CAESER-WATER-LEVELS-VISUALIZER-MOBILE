@@ -17,12 +17,15 @@ function ViewModePlotContent() {
   const wellNumber = params.wellNumber as string;
 
   const [plotConfig] = useState<PlotConfig>({
-    type: 'line',
-    showAverage: false,
-    hideManualReadings: false,
-    hideAutomaticReadings: false,
-    automaticColor: '#3B82F6',
-    manualColor: '#EF4444'
+    showWaterLevel: true,
+    showTemperature: false,
+    showManualReadings: true,
+    dateRange: {},
+    colors: {
+      waterLevel: '#3B82F6',
+      temperature: '#EF4444',
+      manual: '#10B981'
+    }
   });
 
   const [metadata, setMetadata] = useState<any>(null);
@@ -94,7 +97,7 @@ function ViewModePlotContent() {
         {/* Main chart */}
         <div className="bg-white rounded-lg shadow-lg p-6">
           <WaterLevelChartViewMode
-            data={data}
+            data={data as any}
             config={plotConfig}
             loading={isLoading}
             onMetadataChange={setMetadata}

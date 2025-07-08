@@ -29,8 +29,6 @@ export class TursoService {
     const url = process.env.TURSO_DATABASE_URL;
     const authToken = process.env.TURSO_AUTH_TOKEN;
 
-    // Remove debug logging
-
     if (!url || !authToken) {
       throw new Error('Missing Turso database credentials. Please set TURSO_DATABASE_URL and TURSO_AUTH_TOKEN environment variables.');
     }
@@ -258,8 +256,7 @@ export class TursoService {
         error: error instanceof Error ? error.message : error,
         stack: error instanceof Error ? error.stack : undefined,
         params,
-        databaseUrl: this.databaseUrl,
-        hasAuthToken: !!this.authToken
+        hasClient: !!this.client
       });
       throw new Error(`Failed to retrieve wells data: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }

@@ -1,9 +1,7 @@
 import { Handler, HandlerEvent } from '@netlify/functions';
-import { TursoService } from '../../src/lib/api/services/turso';
+import { multiTursoService } from '../../src/lib/api/services/multiTurso';
 import { cacheService, CacheService } from '../../src/lib/api/services/cache';
 import { ApiResponse, WaterLevelReading, RechargeResult, DataQueryParams } from '../../src/lib/api/api';
-
-const tursoService = new TursoService();
 
 export const handler: Handler = async (event: HandlerEvent) => {
   // Set CORS headers
@@ -151,7 +149,7 @@ async function getWaterLevelData(databaseId: string, wellNumber: string, queryPa
   }
 
   // Get water level data directly from Turso
-  const waterLevelData = await tursoService.getWaterLevelData(params);
+  const waterLevelData = await multiTursoService.getWaterLevelData(databaseId, params);
 
   // Cache the result (shorter TTL for data queries)
   cacheService.setWaterLevelData(databaseId, cacheKey, waterLevelData);
@@ -197,7 +195,7 @@ async function getRechargeResults(databaseId: string, wellNumber: string) {
   }
 
   // Get recharge results directly from Turso
-  const rechargeResults = await tursoService.getRechargeResults(wellNumber);
+  const rechargeResults = await multiTursoService.getRechargeResults(databaseId, wellNumber);
 
   // Cache the result
   cacheService.setRechargeResults(databaseId, wellNumber, rechargeResults);
@@ -239,7 +237,7 @@ async function getDataSummary(databaseId: string, wellNumber: string) {
   }
 
   // Get well info directly from Turso
-  const well = await tursoService.getWell(wellNumber);
+  const well = await multiTursoService.getWell(databaseId, wellNumber);
   if (!well) {
     return {
       statusCode: 404,
@@ -255,8 +253,8 @@ async function getDataSummary(databaseId: string, wellNumber: string) {
   }
 
   // Get data counts by type
-  const allData = await tursoService.getWaterLevelData({ wellNumber });
-  const rechargeResults = await tursoService.getRechargeResults(wellNumber);
+  const allData = await multiTursoService.getWaterLevelData(databaseId, { wellNumber });
+  const rechargeResults = await multiTursoService.getRechargeResults(databaseId, wellNumber);
 
   const dataTypeCounts = allData.reduce((counts, reading) => {
     counts[reading.data_source] = (counts[reading.data_source] || 0) + 1;
