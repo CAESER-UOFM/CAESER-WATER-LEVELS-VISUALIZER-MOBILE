@@ -318,13 +318,18 @@ export class MultiTursoService {
         
         // Get actual reading counts for each well
         try {
-          const [transducerResult, manualResult] = await Promise.all([
-            this.execute(databaseId, 'SELECT COUNT(*) FROM water_level_readings WHERE well_number = ?', [well.well_number]),
-            this.execute(databaseId, 'SELECT COUNT(*) FROM manual_level_readings WHERE well_number = ?', [well.well_number])
-          ]);
-          
+          const transducerResult = await this.execute(databaseId, 'SELECT COUNT(*) FROM water_level_readings WHERE well_number = ?', [well.well_number]);
           const transducerCount = parseInt(transducerResult.rows[0][0]) || 0;
-          const manualCount = parseInt(manualResult.rows[0][0]) || 0;
+          
+          let manualCount = 0;
+          try {
+            // Try to get manual readings count - table might not exist in all databases
+            const manualResult = await this.execute(databaseId, 'SELECT COUNT(*) FROM manual_level_readings WHERE well_number = ?', [well.well_number]);
+            manualCount = parseInt(manualResult.rows[0][0]) || 0;
+          } catch (manualError) {
+            // manual_level_readings table doesn't exist, that's okay
+            console.log(`Manual readings table doesn't exist for ${databaseId}`);
+          }
           
           well.total_readings = transducerCount + manualCount;
           well.has_manual_readings = manualCount > 0;

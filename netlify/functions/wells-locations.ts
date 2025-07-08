@@ -82,13 +82,19 @@ export const handler: Handler = async (event, context) => {
 
       try {
         // Quick count queries - only query existing tables
-        const [transducerResult, manualResult] = await Promise.all([
-          multiTursoService.execute(databaseId, `SELECT COUNT(*) FROM water_level_readings WHERE well_number = ?`, [well.well_number]),
-          multiTursoService.execute(databaseId, `SELECT COUNT(*) FROM manual_level_readings WHERE well_number = ?`, [well.well_number])
-        ]);
+        const transducerResult = await multiTursoService.execute(databaseId, `SELECT COUNT(*) FROM water_level_readings WHERE well_number = ?`, [well.well_number]);
+        
+        let manualCount = 0;
+        try {
+          // Try to get manual readings count - table might not exist in all databases
+          const manualResult = await multiTursoService.execute(databaseId, `SELECT COUNT(*) FROM manual_level_readings WHERE well_number = ?`, [well.well_number]);
+          manualCount = Number(manualResult.rows[0][0]);
+        } catch (manualError) {
+          // manual_level_readings table doesn't exist, that's okay
+          console.log(`Manual readings table doesn't exist for ${databaseId}`);
+        }
 
         const transducerCount = Number(transducerResult.rows[0][0]);
-        const manualCount = Number(manualResult.rows[0][0]);
         const telemetryCount = 0; // No telemetry table in current schema
         
         totalReadings = transducerCount + manualCount + telemetryCount;

@@ -91,6 +91,7 @@ export const handler: Handler = async (event, context) => {
       // If no entry in well_statistics table, try to calculate basic stats from water_level_readings
       console.log(`No well_statistics entry for ${wellNumber}, calculating basic stats...`);
       
+      // Try to get basic stats from water_level_readings first
       const basicStatsQuery = `
         SELECT 
           COUNT(*) as total_readings,
