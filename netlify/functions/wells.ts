@@ -1,16 +1,7 @@
 import { Handler, HandlerEvent } from '@netlify/functions';
-import { TursoService } from '../../src/lib/api/services/turso';
+import { multiTursoService } from '../../src/lib/api/services/multiTurso';
 import { cacheService, CacheService } from '../../src/lib/api/services/cache';
 import { ApiResponse, PaginatedResponse, Well, WellsQueryParams } from '../../src/lib/api/api';
-
-let tursoService: TursoService;
-
-try {
-  tursoService = new TursoService();
-} catch (initError) {
-  console.error('Failed to initialize TursoService:', initError);
-  tursoService = null as any;
-}
 
 export const handler: Handler = async (event: HandlerEvent) => {
   // Set CORS headers
@@ -150,13 +141,8 @@ async function getWells(databaseId: string, queryParams: Record<string, string |
     };
   }
 
-  // Check if tursoService initialized properly
-  if (!tursoService) {
-    throw new Error('TursoService failed to initialize - check environment variables');
-  }
-
   // Get wells with pagination directly from Turso
-  const wells = await tursoService.getWells(params);
+  const wells = await multiTursoService.getWells(databaseId, params);
 
   // Cache the result
   cacheService.setWells(databaseId, cacheKey, wells);
@@ -190,7 +176,7 @@ async function getWell(databaseId: string, wellNumber: string) {
   }
 
   // Get specific well directly from Turso
-  const well = await tursoService.getWell(wellNumber);
+  const well = await multiTursoService.getWell(databaseId, wellNumber);
 
   if (!well) {
     return {
@@ -241,7 +227,7 @@ async function getWellFields(databaseId: string) {
   }
 
   // Get well fields directly from Turso
-  const wellFields = await tursoService.getWellFields();
+  const wellFields = await multiTursoService.getWellFields(databaseId);
 
   // Cache the result
   cacheService.set(`${databaseId}:${cacheKey}`, wellFields, 60 * 60); // 1 hour TTL
@@ -278,7 +264,7 @@ async function getAquiferTypes(databaseId: string) {
   }
 
   // Get aquifer types directly from Turso
-  const aquiferTypes = await tursoService.getAquiferTypes();
+  const aquiferTypes = await multiTursoService.getAquiferTypes(databaseId);
 
   // Cache the result
   cacheService.set(`${databaseId}:${cacheKey}`, aquiferTypes, 60 * 60); // 1 hour TTL
